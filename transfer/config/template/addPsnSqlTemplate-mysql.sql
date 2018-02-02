@@ -1,0 +1,6 @@
+INSERT INTO `person` VALUES (v_psn_code, v_org_code, '测试申报单位1', NULL, NULL, 'v_psn_name', 3, '111111111111', 'v_mobile', 'v_email', NULL, now(), NULL, NULL, NULL, '', 1, 0, '', NULL, NULL, NULL, NULL, NULL, NULL);
+INSERT INTO `person_sub` VALUES (v_psn_code, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, 0, 0,  now() , NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+INSERT INTO `person_extend` VALUES (v_psn_code, '0', '<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<data version=\"1.0\"><basic_info version=\"1\"><zh_name>v_psn_name</zh_name><org_name>测试申报单位1</org_name><prof_title_name/><prof_title_value/><card_type_value>3</card_type_value><gender_value></gender_value><card_type_name>护照</card_type_name><card_code>111111111111</card_code></basic_info><contact version=\"1\"><email>v_email</email><mobile>v_mobile</mobile></contact><valid><valid_email>1</valid_email><valid_card>0</valid_card></valid></data>', NULL, NULL);
+INSERT INTO `person_org` VALUES (v_psn_code, v_org_code);
+INSERT INTO `sys_user` VALUES (v_psn_code, NULL, '2karRDERLdE%3D', 1, 0, NULL, 'v_email', NULL, NULL, NULL, NULL, '0');
+INSERT INTO `sys_user_role` VALUES (v_psn_code, 3, 0);
