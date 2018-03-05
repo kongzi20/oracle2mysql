@@ -17,8 +17,9 @@ public class GenDDL4Mysql {
 	 * @throws IOException 
 	 */
 	public static void main(String[] args) throws IOException {
-		File f = new File("template/createTableDDL4Mysal.sql");
-		FileInputStream is = new FileInputStream(f);
+		// File f = new File("template/createTableDDL4Mysal.sql");
+		InputStream is = GenDDL4Mysql.class.getClassLoader().getResourceAsStream("template/createTableDDL4Mysal.sql") ;
+	 //	FileInputStream is = new FileInputStream(f);
 		InputStreamReader isr = new InputStreamReader(is);
 		BufferedReader in = new BufferedReader(isr);
 		StringBuffer str = new StringBuffer("");
