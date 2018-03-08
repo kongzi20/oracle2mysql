@@ -48,13 +48,14 @@ public class Transfer  {
 	/**
 	 *   逐表从oracle读取数据 逐条插入mysql对应表（前提是mysql已有对应表）
 	 *   不包括 CLOB 和BCLOB
-	 * @param divideTableName 从哪个表开始导入
+	 * @param startTableName 从哪个表开始导入
 	 * @param flag 起始位置标示 :flag >=0, 从 >= divideTableName 开始导（按字符串自然排序的升序）；flag < 0, 从 <  divideTableName 开始导（按字符串自然排序的升序）
+	 * @param targetDbName 目标库
 	 * @throws SQLException 
 	 * @throws IOException 
 	 * @throws ClassNotFoundException 
 	 */
-	public void doImportByTable(String divideTableName, Integer flag) throws ClassNotFoundException, IOException, SQLException {
+	public void doImportByTable(String startTableName, Integer flag, String targetDbName) throws ClassNotFoundException, IOException, SQLException {
 		 
 		Connection mysqlConnection = ConnectionUtils.getConnection(ConnectionUtils.DB_TYPE_MYSQL); 
 		mysqlConnection.setAutoCommit(false) ;
@@ -62,15 +63,15 @@ public class Transfer  {
 		Connection oracleConnection = ConnectionUtils.getConnection(ConnectionUtils.DB_TYPE_ORACLE); 
 		// oracleConnection.setAutoCommit(false);
 		 // 取得所有表
-		String oracleTablesSql = " select t.TABLE_NAME from  user_tables t where t.TABLE_NAME in ('EVALUATION_RESULT') " 
-		     // + 	"   where t.TABLE_NAME in ('PROPOSAL_CACHED' , 'FORM_BASE_LIBRARY' , 'GRANT_SETTING' ,'GRANT_SCHEDULE' ,'GRANT_NOTES' ,'GRANT_SETTING_EXTEND' )  "
+		String oracleTablesSql = " select t.TABLE_NAME from  user_tables t   "  
+		     + 	"   where t.TABLE_NAME not in ('QRTZ_TASK_DETAIL_LOG','COMPARE_QUEUE','SECURITY_LOG','QRTZ_TASK_LOG','QUEUE_TASK_LOG','FACT_GDSSY')  "
 				;
 		if (null == flag){
 			
 		}else	if ( flag.intValue() >= 0){
-			oracleTablesSql += " where  t.TABLE_NAME >= '" + divideTableName.toUpperCase() + "' " ;
+			oracleTablesSql += " and  t.TABLE_NAME > '" + startTableName.toUpperCase() + "' " ;
 		}else if ( flag.intValue() < 0){
-			oracleTablesSql += " where  t.TABLE_NAME  < '" + divideTableName.toUpperCase() + "' " ;
+			oracleTablesSql += " and  t.TABLE_NAME  < '" + startTableName.toUpperCase() + "' " ;
 		}
 		oracleTablesSql = oracleTablesSql + " order by t.TABLE_NAME asc  " ;
 		// 每次取1000
@@ -82,7 +83,7 @@ public class Transfer  {
 		 String mysqlTableName =  rs.getString("TABLE_NAME").toLowerCase();  //mysql 表名
 		 System.out.print(mysqlTableName + " ");
 		 // 查mysql是否存在此表
-		 String mysqlSqlStr = " SELECT count(*)  as count  FROM information_schema.TABLES t  where 1=1 and t.TABLE_SCHEMA = 'qd_test2' and t.TABLE_NAME  =  '"  + mysqlTableName + "'";
+		 String mysqlSqlStr = " SELECT count(*)  as count  FROM information_schema.TABLES t  where 1=1 and t.TABLE_SCHEMA =  '" + targetDbName + "' and t.TABLE_NAME  =  '"  + mysqlTableName + "'";
 		 ResultSet mysqlTabCntRs  = this.getResultSet(mysqlConnection , mysqlSqlStr) ;
 		 boolean mysqlExistFlag = false ;
 		 if (mysqlTabCntRs.next()){
@@ -129,7 +130,13 @@ public class Transfer  {
 				    		 java.sql.Timestamp tempObj = (java.sql.Timestamp)o ;
 				    		 sb.append(tempObj.toString());
 				    	 }*/else{
-				    	 	  sb.append( null == o ?  "\\N" : o.toString())	;
+    		          if(null == o){
+    		        	    sb.append( "\\N") ;
+    		          }else{
+    		        	  	String tempStr = o.toString() ;
+    		        	  	tempStr =  tempStr.contains("\\") ? tempStr.replace("\\", "/") : tempStr ;
+    		        	    sb.append( tempStr  )	;
+				    		          }
 				    	 	  }
 				    	 
 				    	// 一条记录结尾添加\n
