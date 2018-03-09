@@ -14,13 +14,18 @@ public class Test {
 	 */
 	public static void main(String[] args) throws InterruptedException, ClassNotFoundException, IOException, SQLException {
 		  Transfer tr = new Transfer() ;
-		  // 1、导入文本类型数据
-		  tr.doImportByTable("XML_UPDATE_LOG", 1 ,"jyfms_dev" );
+		    // 1、导入文本类型数据
+		  // tr.doImportByTable("", null ,"jyfms_dev" );
 		  
-	   //2、oracle CLOB导入
-		 //  tr.doImportClob() ;
+		  //  2、oracle XMLTYPE导入
+		    // tr.doImportXmlType()  ;
+		  
+	    //3、oracle CLOB导入
+		   //  tr.doImportClob() ;
 		
-		  //3、oracle BLOB导入
-		 //tr.doImportBlob() ;
+		  //4、oracle BLOB导入
+		   // tr.doImportBlob() ;
+		  
+		
 	}
 }

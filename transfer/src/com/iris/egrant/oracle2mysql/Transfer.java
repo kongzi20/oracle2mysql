@@ -49,7 +49,7 @@ public class Transfer  {
 	 *   逐表从oracle读取数据 逐条插入mysql对应表（前提是mysql已有对应表）
 	 *   不包括 CLOB 和BCLOB
 	 * @param startTableName 从哪个表开始导入
-	 * @param flag 起始位置标示 :flag >=0, 从 >= divideTableName 开始导（按字符串自然排序的升序）；flag < 0, 从 <  divideTableName 开始导（按字符串自然排序的升序）
+	 * @param flag 起始位置标示 :flag >=0, 从 >= startTableName 开始导（按字符串自然排序的升序）；flag < 0, 从 <  startTableName 开始导（按字符串自然排序的升序）
 	 * @param targetDbName 目标库
 	 * @throws SQLException 
 	 * @throws IOException 
@@ -64,7 +64,8 @@ public class Transfer  {
 		// oracleConnection.setAutoCommit(false);
 		 // 取得所有表
 		String oracleTablesSql = " select t.TABLE_NAME from  user_tables t   "  
-		     + 	"   where t.TABLE_NAME not in ('QRTZ_TASK_DETAIL_LOG','COMPARE_QUEUE','SECURITY_LOG','QRTZ_TASK_LOG','QUEUE_TASK_LOG','FACT_GDSSY')  "
+				 + "  where   t.TABLE_NAME in (  'PROPOSAL_CACHED_EXTEND' ,'PROPOSAL_EXTEND') "
+		     // + 	"   where t.TABLE_NAME not in ('QRTZ_TASK_DETAIL_LOG','COMPARE_QUEUE','SECURITY_LOG','QRTZ_TASK_LOG','QUEUE_TASK_LOG','FACT_GDSSY')  "
 				;
 		if (null == flag){
 			
@@ -104,11 +105,18 @@ public class Transfer  {
 			    while(oracleRs.next()){
 				    for( int i = 1 ; i <= oracleColumnCount ; i ++ ){  // 遍历 单条记录的每个字段 
 				    		rsmd.getColumnLabel(i) ;
-				    	 Object  o = oracleRs.getObject(i);
+				    		Object o = null;
+							try {
+								o = oracleRs.getObject(i);
+							} catch (Exception e) {
+								// TODO 自动生成的 catch 块
+								//e.printStackTrace();
+							}
 				    	 //  System.out.println(rsmd.getColumnClassName(i));
-				    	 if ( o instanceof oracle.xdb.XMLType){
+				    	 if (1!=1 && o instanceof oracle.xdb.XMLType){
 				    		  XMLType tempObj = (XMLType) o ;
 				    		  sb.append( tempObj.getStringVal()) ;
+				    	 // 	  tempObj.getStream()
 				    	 }/*else if (o instanceof oracle.sql.BLOB){
 				    		 oracle.sql.BLOB tempObj = (oracle.sql.BLOB)o ;
 				    		 String tempStr = new String(tempObj.getBytes(),"UTF-8");
@@ -162,6 +170,102 @@ public class Transfer  {
 	}
 	
 	/**
+	 * xmltype 处理
+	 * @throws ClassNotFoundException 
+	 * @throws SQLException 
+	 * @throws IOException 
+	 */
+	public void doImportXmlType() throws IOException, SQLException, ClassNotFoundException{
+		Connection mysqlConnection = ConnectionUtils.getConnection(ConnectionUtils.DB_TYPE_MYSQL); 
+		mysqlConnection.setAutoCommit(false) ;
+		
+		Connection oracleConnection = ConnectionUtils.getConnection(ConnectionUtils.DB_TYPE_ORACLE); 
+		oracleConnection.setReadOnly(true);
+		// 找到所有包含XMLTYPE 的字段
+		String oracleLobTableSql = "select  t.TABLE_NAME as TABLE_NAME ,  " 
+														   + " to_char(wm_concat(t.COLUMN_NAME)) as COLUMN_NAMES " 
+															 + " from user_tab_columns t "
+															 + " where  t.DATA_TYPE in ('XMLTYPE' ) "
+														  + " and  t.TABLE_NAME  not in ( 'PROPOSAL_CACHED_EXTEND','PROPOSAL_EXTEND') "   //TODO
+															  + " and t.TABLE_NAME > 'REPORT_PROGRESS' "
+															 + " group by t.TABLE_NAME "
+															 + " order by t.TABLE_NAME asc "; 
+		ResultSet oracleLobTableRs = this.getResultSet(oracleConnection, oracleLobTableSql)  ;
+		// 从oracle表 逐一导入
+		while (oracleLobTableRs.next()){   // 每一个表
+			// 需要处理的字段
+			String oColumnNames =  oracleLobTableRs.getString("COLUMN_NAMES") ; 
+			String[] oColumnNamesArr = oColumnNames.split(",");
+			// 表名
+			String oTableName =  oracleLobTableRs.getString("TABLE_NAME") ;  
+			System.out.print( "表：" + oTableName);
+			// 主健字段 或者 唯一健字段  用于匹配数据
+			String keyField = this.getKeyField(oracleConnection, oTableName) ;
+			String[] keyFieldArr = null ; 
+			if ( null != keyField && !"".equals(keyField)){
+				keyFieldArr = keyField.split(",");
+				System.out.print(" 匹配数据使用主健/唯一健字段：" +  keyField);
+			}else{
+				System.out.println(" 未找到匹配数据使用主健/唯一健字段！跳过");
+				continue ;
+			}
+			// 开始找数据 
+			// oralce  sql
+			String oDataSql =  " select "  + keyField + " , " + oColumnNames   +  " from  "  + oTableName  /*+ " where rownum = 1 "*/ ; //TODO
+			// oralce ResultSet
+			ResultSet oDataRs = this.getResultSet(oracleConnection, oDataSql) ;
+			// 准备更 mysql
+			// sql
+			StringBuilder mysqlSelect4updateSb  = new StringBuilder(" update   " + oTableName.toLowerCase() + " set ");
+			 // 拼凑sql 待更新字段 
+			for (int i = 0 ; i < oColumnNamesArr.length ; i++ ){
+				mysqlSelect4updateSb.append( "`" + oColumnNamesArr[i].toLowerCase() + "` = ? " ) ;
+				 // 字段结尾 + ","
+				if ( i < oColumnNamesArr.length -1){
+					mysqlSelect4updateSb.append( " , ") ;
+				}
+			}
+			// table name 
+			mysqlSelect4updateSb.append(  " where  1=1 ") ;
+			// where clause
+			for (int i = 0 ; i < keyFieldArr.length ; i++ ){
+				// 条件之前 评凑 and
+				mysqlSelect4updateSb.append( " and `" + keyFieldArr[i].toLowerCase() + "`" + " = ? ") ;
+			}
+			 
+			// PreparedStatement ps = mysqlConnection.prepareStatement(" " );
+			PreparedStatement mysqlUpdatePs = mysqlConnection.prepareStatement(mysqlSelect4updateSb.toString());
+			System.out.println(" 需处理的XMLTYPE字段：" +  Arrays.toString(oColumnNamesArr));
+			while (oDataRs.next()){  // oracle 每一条数据
+				 // 处理mysql记录
+					// 每一个   BLOB字段
+					for (int i = 0 ; i < oColumnNamesArr.length ; i++ ){
+						  Object o = null;
+						try {
+							o = oDataRs.getObject(oColumnNamesArr[i]);
+						} catch (Exception e) {
+							// TODO 自动生成的 catch 块
+							//e.printStackTrace();
+						} 
+						  XMLType tempObj = (XMLType) o ;
+						  mysqlUpdatePs.setString( i + 1 , tempObj == null ? null : tempObj.getStringVal() );
+					}
+					// 追加 where 条件,使用主健 或者唯一健 做查询条件
+					for (int i = 1 ; i <= keyFieldArr.length ; i++ ){ 
+						mysqlUpdatePs.setObject(  oColumnNamesArr.length + i, oDataRs.getObject(keyFieldArr[i-1])) ;
+					}
+					mysqlUpdatePs.addBatch() ;
+			}
+			 // 执行
+			mysqlUpdatePs.executeBatch() ;
+			// 提交事物
+		  mysqlConnection.commit() ;
+		}
+		
+	}
+	
+	
+	/**
 	 * blob 处理
 	 * @throws ClassNotFoundException 
 	 * @throws SQLException 
@@ -177,8 +281,8 @@ public class Transfer  {
 		String oracleLobTableSql = "select  t.TABLE_NAME as TABLE_NAME ,  " 
 														   + " to_char(wm_concat(t.COLUMN_NAME)) as COLUMN_NAMES " 
 															 + " from user_tab_columns t "
-															 + " where  t.DATA_TYPE in ('BLOB' ) "
-														  // 	 + " and  t.TABLE_NAME = 'QRTZ_JOB_DETAILS' "   //TODO
+															 + " where  t.DATA_TYPE in ('BLOB') "
+														//    + " and  t.TABLE_NAME = 'QRTZ_JOB_DETAILS' "   //TODO
 															 + " group by t.TABLE_NAME "
 															 + " order by t.TABLE_NAME asc "; 
 		ResultSet oracleLobTableRs = this.getResultSet(oracleConnection, oracleLobTableSql)  ;
@@ -277,7 +381,9 @@ public class Transfer  {
 														   + " to_char(wm_concat(t.COLUMN_NAME)) as COLUMN_NAMES " 
 															 + " from user_tab_columns t "
 															 + " where  t.DATA_TYPE in ('CLOB') "
-														 //  	  + " and  t.TABLE_NAME = 'ATTACH_LOG' "   //TODO
+														   + " and  t.TABLE_NAME >= 'TASK_LOG_XC' "   //TODO
+															 + " and t.TABLE_NAME  not like 'SYS_EXPORT_SCHEMA_%' "  // SYS_EXPORT_SCHEMA_无需导入
+															 + " and t.TABLE_NAME  not like 'SYS_LOG' "   // SYS_LOG无需导入
 															 + " group by t.TABLE_NAME "
 															 + " order by t.TABLE_NAME asc "; 
 		ResultSet oracleLobTableRs = this.getResultSet(oracleConnection, oracleCLOBTableSql)  ;
@@ -316,14 +422,14 @@ public class Transfer  {
 				}
 			}
 			//  where 
-			mysqlUpdateSb.append(" where ") ;
+			mysqlUpdateSb.append(" where 1=1") ;
 			// where clause
 			for (int i = 0 ; i < keyFieldArr.length ; i++ ){
-				mysqlUpdateSb.append( "`" + keyFieldArr[i].toLowerCase() + "`"  + " = ? ") ;
-				// 字段结尾 + ","
+				mysqlUpdateSb.append( " and `" + keyFieldArr[i].toLowerCase() + "`"  + " = ? ") ;
+				/*// 字段结尾 + ","
 				if ( i < keyFieldArr.length -1){
 					mysqlUpdateSb.append( " , ") ;
-				}
+				}*/
 			}
 			 // 遍历oracle该表每一条数据
 			PreparedStatement ps = mysqlConnection.prepareStatement(mysqlUpdateSb.toString()); 
